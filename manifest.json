@@ -1,7 +1,7 @@
 {
   "name": "Kids Quiz App",
   "short_name": "QuizApp",
-  "start_url": "./quiz.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#039be5",
@@ -18,3 +18,4 @@
     }
   ]
 }
+
