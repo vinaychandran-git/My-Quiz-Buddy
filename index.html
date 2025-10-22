@@ -293,6 +293,17 @@
     <script>
         let quizBank = [], originalQuizBank = [], currentQuiz = [], userAnswers = {}, timerInterval, editingIndex = -1, hasUnsavedChanges = false, currentQuestionIndex = 0, quizMode = 'all';
         
+        // GitHub Configuration - UPDATE THESE VALUES
+        const GITHUB_CONFIG = {
+            owner: "vinaychandran-git",        // Your GitHub username
+            repo: "My-Quiz-Buddy",              // Your repository name
+            branch: "main",                // Branch name (main or master)
+            folder: "quiz-banks"           // Folder path containing Excel files
+        };
+        
+        // Build the GitHub API URL
+        const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.folder}?ref=${GITHUB_CONFIG.branch}`;
+        
         const sampleQuizBank = [
             {"question":"What is the capital of Colombia?","optionA":"Medellin","optionB":"Cali","optionC":"Bogota","optionD":"Cartagena","correct":"C","subject":"Geography","level":"Medium","tags":"Colombia"},
             {"question":"What is 17 × 4?","optionA":"64","optionB":"66","optionC":"68","optionD":"70","correct":"C","subject":"Mathematics","level":"Medium","tags":"Multiplication"},
@@ -552,3 +563,4 @@
     </script>
 </body>
 </html>
+
