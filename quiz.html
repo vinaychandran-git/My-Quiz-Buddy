@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Quiz Buddy</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#039be5">
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+        navigator.serviceWorker.register('./service-worker.js')
+        .then(reg => console.log('Service worker registered:', reg))
+        .catch(err => console.log('Service worker error:', err));
+        });
+    }
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; min-height: 100vh; padding: 20px; line-height: 1.6; color: #233c86; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden; }
+        .app-header { background: #233c86; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #34495e; }
+        h1 { color: white; font-size: 1.75em; font-weight: 600; }
+        h2 { color: #233c86; font-size: 1.5em; margin-bottom: 20px; font-weight: 600; }
+        h3 { color: #34495e; font-size: 1.2em; margin-bottom: 15px; font-weight: 600; }
+        .tabs { display: flex; border-bottom: 2px solid #ecf0f1; background: #fafbfc; }
+        .tab-button { padding: 16px 28px; font-size: 0.95em; border: none; background: transparent; color: #7f8c8d; cursor: pointer; transition: all 0.2s; font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px; flex: 1; text-align: center; }
+        .tab-button.active { color: #233c86; border-bottom-color: #233c86; background: white; }
+        .tab-button:hover { color: #34495e; background: #f8f9fa; }
+        .tab-content { display: none; animation: fadeIn 0.3s; padding: 32px; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .collapsible-section { background: #fafbfc; border-radius: 6px; margin-bottom: 24px; overflow: hidden; border: 1px solid #e1e8ed; }
+        .collapsible-header { background: #f8f9fa; color: #233c86; padding: 14px 20px; cursor: pointer; display: flex; justify-content: space-between; font-weight: 600; transition: all 0.2s; border-bottom: 1px solid #e1e8ed; }
+        .collapsible-header:hover { background: #ecf0f1; }
+        .collapsible-content { padding: 20px; display: none; background: white; }
+        .collapsible-content.active { display: block; }
+        .collapse-icon { transition: transform 0.3s; font-size: 1.1em; color: #7f8c8d; }
+        .collapse-icon.rotated { transform: rotate(180deg); }
+        .filter-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+        .filter-group { display: flex; flex-direction: column; }
+        input[type="file"] { display: none; }
+        .question-card { background: white; padding: 20px; border-radius: 6px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e1e8ed; transition: all 0.2s; }
+        .question-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); border-color: #cbd5e0; }
+        .question-card-header { font-size: 1.05em; font-weight: 600; color: #233c86; margin-bottom: 14px; }
+        .question-card-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 14px 0; font-size: 0.95em; }
+        .question-card-option { padding: 10px 14px; background: #f8f9fa; border-radius: 4px; border: 1px solid #e1e8ed; }
+        .question-card-meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; font-size: 0.85em; }
+        .meta-badge { padding: 5px 12px; border-radius: 4px; font-weight: 600; background: #f8f9fa; color: #34495e; border: 1px solid #e1e8ed; }
+        .meta-badge.correct { background: #e8f5e9; color: #2e7d32; border-color: #a5d6a7; }
+        .meta-badge.subject { background: #e3f2fd; color: #1565c0; border-color: #90caf9; }
+        .meta-badge.difficulty.easy { background: #e8f5e9; color: #2e7d32; border-color: #a5d6a7; }
+        .meta-badge.difficulty.medium { background: #fff3e0; color: #e65100; border-color: #ffcc80; }
+        .meta-badge.difficulty.hard { background: #ffebee; color: #c62828; border-color: #ef9a9a; }
+        .meta-badge.tags { background: #f3e5f5; color: #6a1b9a; border-color: #ce93d8; }
+        .question-card-actions { display: flex; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #e1e8ed; }
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95em; font-weight: 600; transition: all 0.2s; margin: 5px; display: inline-flex; align-items: center; gap: 8px; font-family: inherit; }
+        .btn-primary { background: #233c86; color: white; }
+        .btn-primary:hover { background: #34495e; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(44, 62, 80, 0.2); }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-success:hover { background: #229954; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(39, 174, 96, 0.2); }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-danger:hover { background: #c0392b; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(231, 76, 60, 0.2); }
+        .btn-warning { background: #f39c12; color: white; }
+        .btn-warning:hover { background: #e67e22; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(243, 156, 18, 0.2); }
+        .unsaved-badge { display: inline-block; background: #e74c3c; color: white; padding: 6px 14px; border-radius: 4px; font-size: 0.85em; margin-left: 10px; font-weight: 600; }
+        .quiz-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .setting-card { background: white; padding: 20px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e1e8ed; transition: all 0.2s; }
+        .setting-card h4 { color: #233c86; margin-bottom: 12px; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+        .setting-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); border-color: #cbd5e0; }
+        .setting-description { color: #7f8c8d; font-size: 0.85em; margin-top: 8px; }
+        label { font-weight: 600; color: #34495e; margin-bottom: 8px; display: block; font-size: 0.9em; }
+        select, input[type="number"], input[type="text"], textarea { width: 100%; padding: 10px 12px; border: 1px solid #d1d8dd; border-radius: 6px; font-size: 0.95em; transition: all 0.2s; background: white; font-family: inherit; color: #233c86; }
+        select:focus, input:focus, textarea:focus { outline: none; border-color: #233c86; box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1); }
+        select[multiple] { min-height: 100px; padding: 6px; }
+        select[multiple] option { padding: 8px 10px; margin: 2px 0; border-radius: 4px; cursor: pointer; }
+        select[multiple] option:hover { background: #f8f9fa; }
+        select[multiple] option:checked { background: #233c86; color: white; }
+        .quiz-question { background: white; padding: 28px; border-radius: 6px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e1e8ed; }
+        .question-number { background: #233c86; color: white; padding: 6px 14px; border-radius: 4px; display: inline-block; margin-bottom: 16px; font-weight: 600; font-size: 0.9em; }
+        .options { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+        .option-wrapper { position: relative; }
+        .option-wrapper input[type="radio"] { position: absolute; opacity: 0; cursor: pointer; }
+        .option-label { background: #fafbfc; padding: 16px; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: 2px solid #e1e8ed; display: flex; align-items: center; gap: 12px; font-size: 1em; color: #34495e; }
+        .option-label::before { content: ''; width: 18px; height: 18px; border: 2px solid #bdc3c7; border-radius: 50%; flex-shrink: 0; background: white; transition: all 0.2s; }
+        .option-wrapper input[type="radio"]:checked + .option-label { background: #233c86; color: white; border-color: #233c86; font-weight: 600; }
+        .option-wrapper input[type="radio"]:checked + .option-label::before { background: white; border-color: white; box-shadow: inset 0 0 0 4px #233c86; }
+        .option-label:hover { background: #f0f3f5; border-color: #bdc3c7; }
+        .option-wrapper input[type="radio"]:checked + .option-label:hover { background: #34495e; border-color: #34495e; }
+        .timer { position: fixed; top: 20px; right: 20px; background: white; padding: 12px 20px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); font-size: 1.1em; font-weight: 600; color: #233c86; z-index: 1000; display: flex; align-items: center; gap: 8px; border: 1px solid #e1e8ed; }
+        .timer.warning { background: #fff3e0; color: #e65100; border-color: #ffcc80; }
+        .timer.danger { background: #ffebee; color: #c62828; border-color: #ef9a9a; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+        .results-section { text-align: center; padding: 32px 40px; background: #233c86; border-radius: 6px; margin-bottom: 32px; color: white; }
+        .performance-emoji { font-size: 5em; margin: 20px 0; animation: bounce 1s ease-in-out; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+        .performance-message { font-size: 1.6em; margin: 16px 0; font-weight: 600; }
+        .result-item { background: white; padding: 20px; border-radius: 6px; margin-bottom: 16px; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e1e8ed; }
+        .result-item.correct { border-left: 4px solid #27ae60; background: #f8fdf9; }
+        .result-item.incorrect { border-left: 4px solid #e74c3c; background: #fef9f9; }
+        .correct-answer { color: #27ae60; font-weight: 600; background: #e8f5e9; padding: 4px 10px; border-radius: 4px; }
+        .incorrect-answer { color: #e74c3c; font-weight: 600; background: #ffebee; padding: 4px 10px; border-radius: 4px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(44, 62, 80, 0.5); z-index: 2000; justify-content: center; align-items: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; padding: 32px; border-radius: 6px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
+        .form-group { margin-bottom: 20px; }
+        textarea { resize: vertical; min-height: 80px; }
+        .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+        .quiz-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin: 28px 0; }
+        .stat-card { background: rgba(255,255,255,0.15); padding: 20px; border-radius: 6px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        .stat-value { font-size: 2.2em; font-weight: 700; margin-bottom: 5px; }
+        .stat-label { font-size: 0.95em; opacity: 0.95; }
+        .start-quiz-btn { width: 100%; padding: 16px; font-size: 1.1em; background: #233c86; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 24px; }
+        .start-quiz-btn:hover { background: #34495e; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(44, 62, 80, 0.2); }
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .options { grid-template-columns: 1fr; }
+            .quiz-settings-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 1.4em; }
+            .app-header { padding: 18px 20px; }
+            .timer { top: 10px; right: 10px; padding: 8px 14px; font-size: 0.95em; }
+            .tab-button { padding: 12px 10px; font-size: 0.85em; }
+            .tab-content { padding: 20px; }
+            .performance-emoji { font-size: 3.5em; }
+            .performance-message { font-size: 1.2em; }
+            .filter-controls { grid-template-columns: 1fr; }
+            .question-card-options { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="app-header">
+            <h1>📚 My Quiz Buddy</h1>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab-button active" onclick="switchTab('manage')">Manage Quiz Bank</button>
+            <button class="tab-button" onclick="switchTab('quiz')">Take Quiz</button>
+            <button class="tab-button" onclick="switchTab('results')">Results</button>
+        </div>
+
+        <div id="manage-tab" class="tab-content active">
+            <div class="collapsible-section">
+                <div class="collapsible-header" onclick="toggleCollapsible('filters')">
+                    <span>🔍 Filters</span>
+                    <span class="collapse-icon" id="filters-icon">▼</span>
+                </div>
+                <div class="collapsible-content" id="filters-content">
+                    <div class="filter-controls">
+                        <div class="filter-group">
+                            <label for="bank-subject-filter">Filter by Subject</label>
+                            <select id="bank-subject-filter" onchange="filterQuizBank()">
+                                <option value="all">All Subjects</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="bank-level-filter">Filter by Level</label>
+                            <select id="bank-level-filter" onchange="filterQuizBank()">
+                                <option value="all">All Levels</option>
+                                <option value="Easy">Easy</option>
+                                <option value="Medium">Medium</option>
+                                <option value="Hard">Hard</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="bank-tag-filter">Filter by Tag</label>
+                            <select id="bank-tag-filter" onchange="filterQuizBank()">
+                                <option value="all">All Tags</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="bank-search">Search Questions</label>
+                            <input type="text" id="bank-search" placeholder="Type to search..." oninput="filterQuizBank()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn btn-primary" onclick="showAddQuestionModal()">➕ Add New Question</button>
+                <button class="btn btn-success" onclick="downloadQuizBank()">💾 Download Quiz Bank</button>
+                <button class="btn btn-warning" onclick="loadSampleData()">📚 Load Sample Data</button>
+                <label class="btn btn-primary" style="cursor: pointer;">
+                    <input type="file" id="excel-file" accept=".xlsx,.xls" onchange="handleFileUpload(event)">
+                    📤 Upload Quiz Bank
+                </label>
+                <span id="unsaved-indicator" style="display: none;" class="unsaved-badge">Unsaved Changes</span>
+            </div>
+
+            <div id="quiz-bank-container"></div>
+        </div>
+
+        <div id="quiz-tab" class="tab-content">
+            <button class="start-quiz-btn" onclick="startQuiz()">🚀 Start Quiz</button>
+            
+            <h2>Configure Your Quiz</h2>
+            
+            <div class="quiz-settings-grid">
+                <div class="setting-card">
+                    <h4>Quiz Length</h4>
+                    <label for="num-questions">Number of Questions</label>
+                    <input type="number" id="num-questions" min="1" max="50" value="10">
+                    <p class="setting-description">Choose 1-50 questions</p>
+                </div>
+                
+                <div class="setting-card">
+                    <h4>Difficulty Level</h4>
+                    <label for="level-filter">Select Difficulty</label>
+                    <select id="level-filter">
+                        <option value="all">All Levels</option>
+                        <option value="Easy">Easy</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Hard">Hard</option>
+                    </select>
+                    <p class="setting-description">Filter by difficulty</p>
+                </div>
+                
+                <div class="setting-card">
+                    <h4>Time Limit</h4>
+                    <label for="timer-minutes">Duration (minutes)</label>
+                    <input type="number" id="timer-minutes" min="1" max="60" value="10">
+                    <p class="setting-description">Auto: 1 min/question</p>
+                </div>
+                
+                <div class="setting-card">
+                    <h4>Quiz Mode</h4>
+                    <label for="quiz-mode">Display Mode</label>
+                    <select id="quiz-mode">
+                        <option value="all">All Questions at Once</option>
+                        <option value="one">One Question at a Time</option>
+                    </select>
+                    <p class="setting-description">Choose display preference</p>
+                </div>
+                
+                <div class="setting-card">
+                    <h4>Subject Selection</h4>
+                    <label for="subject-filter">Choose Subjects</label>
+                    <select id="subject-filter" multiple>
+                        <option value="all" selected>All Subjects</option>
+                    </select>
+                    <p class="setting-description">Hold Ctrl/Cmd for multiple</p>
+                </div>
+                
+                <div class="setting-card">
+                    <h4>Tag Filter</h4>
+                    <label for="tag-filter">Choose Tags</label>
+                    <select id="tag-filter" multiple>
+                        <option value="all" selected>All Tags</option>
+                    </select>
+                    <p class="setting-description">Hold Ctrl/Cmd for multiple</p>
+                </div>
+            </div>
+
+            <div id="quiz-container" style="display: none;">
+                <div class="timer" id="timer">⏱️ Time: 10:00</div>
+                <div id="quiz-questions"></div>
+                <div style="text-align: center; margin-top: 30px; padding-bottom: 30px;">
+                    <button class="btn btn-primary" onclick="submitQuiz()" style="font-size: 1.2em; padding: 14px 32px;">✅ Submit Quiz</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="results-tab" class="tab-content">
+            <div id="results-container"></div>
+        </div>
+    </div>
+
+    <div id="question-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modal-title">Add New Question</h2>
+            <form id="question-form">
+                <div class="form-group"><label>Question:</label><textarea id="modal-question" required></textarea></div>
+                <div class="form-group"><label>Option A:</label><input type="text" id="modal-optionA" required></div>
+                <div class="form-group"><label>Option B:</label><input type="text" id="modal-optionB" required></div>
+                <div class="form-group"><label>Option C:</label><input type="text" id="modal-optionC" required></div>
+                <div class="form-group"><label>Option D:</label><input type="text" id="modal-optionD" required></div>
+                <div class="form-group"><label>Correct Answer:</label><select id="modal-correct" required><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
+                <div class="form-group"><label>Subject:</label><input type="text" id="modal-subject" required></div>
+                <div class="form-group"><label>Level:</label><select id="modal-level" required><option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option></select></div>
+                <div class="form-group"><label>Tags (optional):</label><input type="text" id="modal-tags" placeholder="Separate with commas"></div>
+                <div class="action-buttons">
+                    <button type="submit" class="btn btn-success">💾 Save</button>
+                    <button type="button" class="btn btn-danger" onclick="closeModal()">❌ Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let quizBank = [], originalQuizBank = [], currentQuiz = [], userAnswers = {}, timerInterval, editingIndex = -1, hasUnsavedChanges = false, currentQuestionIndex = 0, quizMode = 'all';
+        
+        const sampleQuizBank = [
+            {"question":"What is the capital of Colombia?","optionA":"Medellin","optionB":"Cali","optionC":"Bogota","optionD":"Cartagena","correct":"C","subject":"Geography","level":"Medium","tags":"Colombia"},
+            {"question":"What is 17 × 4?","optionA":"64","optionB":"66","optionC":"68","optionD":"70","correct":"C","subject":"Mathematics","level":"Medium","tags":"Multiplication"},
+            {"question":"How many hearts does an octopus have?","optionA":"1","optionB":"2","optionC":"3","optionD":"4","correct":"C","subject":"Science","level":"Hard","tags":"Animals"},
+            {"question":"What do pandas mainly eat?","optionA":"Meat","optionB":"Fish","optionC":"Bamboo","optionD":"Fruits","correct":"C","subject":"Science","level":"Easy","tags":"Animals"},
+            {"question":"Which metal is liquid at room temperature?","optionA":"Gold","optionB":"Silver","optionC":"Mercury","optionD":"Iron","correct":"C","subject":"Science","level":"Medium","tags":"Chemistry"}
+        ];
+
+        window.onload = () => { loadSampleData(); updateTimerDefault(); updateTagFilter(); };
+        
+        function toggleCollapsible(id) {
+            const content = document.getElementById(id + '-content'), icon = document.getElementById(id + '-icon');
+            content.classList.toggle('active'); icon.classList.toggle('rotated');
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            event.target.classList.add('active');
+            if (tabName === 'quiz') {
+                document.getElementById('quiz-container').style.display = 'none';
+                document.querySelectorAll('.setting-card').forEach(c => c.style.display = 'block');
+                const startBtn = document.querySelector('.start-quiz-btn'), heading = document.querySelector('#quiz-tab h2');
+                if (startBtn) startBtn.style.display = 'block';
+                if (heading) heading.style.display = 'block';
+                document.getElementById('timer').classList.remove('warning', 'danger');
+            }
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result), workbook = XLSX.read(data, {type: 'array'}), firstSheet = workbook.Sheets[workbook.SheetNames[0]], jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                    quizBank = jsonData.map(row => ({question: row['Question'] || row.question || '', optionA: row['Option A'] || row.optionA || '', optionB: row['Option B'] || row.optionB || '', optionC: row['Option C'] || row.optionC || '', optionD: row['Option D'] || row.optionD || '', correct: row['Correct Answer'] || row.correct || '', subject: row['Subject'] || row.subject || '', level: row['Level'] || row.level || 'Easy', tags: row['Tags'] || row.tags || ''}));
+                    originalQuizBank = [...quizBank]; renderQuizTable(); updateTagFilter(); updateBankFilters(); updateSubjectFilter(); alert('Excel file uploaded successfully! ✅');
+                } catch (error) { alert('Error reading file ❌'); }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function loadSampleData() { quizBank = [...sampleQuizBank]; originalQuizBank = [...sampleQuizBank]; renderQuizTable(); updateTagFilter(); updateBankFilters(); }
+
+        function updateBankFilters() {
+            const subjectFilter = document.getElementById('bank-subject-filter'), tagFilter = document.getElementById('bank-tag-filter'), subjects = new Set(), tags = new Set();
+            originalQuizBank.forEach(q => { if(q.subject) subjects.add(q.subject); if(q.tags) q.tags.split(',').forEach(t => tags.add(t.trim())); });
+            subjectFilter.innerHTML = '<option value="all">All Subjects</option>'; Array.from(subjects).sort().forEach(s => subjectFilter.innerHTML += `<option value="${s}">${s}</option>`);
+            tagFilter.innerHTML = '<option value="all">All Tags</option>'; Array.from(tags).sort().forEach(t => tagFilter.innerHTML += `<option value="${t}">${t}</option>`);
+            updateSubjectFilter();
+        }
+
+        function updateSubjectFilter() {
+            const subjectFilterSelect = document.getElementById('subject-filter'), subjects = new Set();
+            originalQuizBank.forEach(q => { if(q.subject) subjects.add(q.subject); });
+            subjectFilterSelect.innerHTML = '<option value="all" selected>All Subjects</option>';
+            Array.from(subjects).sort().forEach(s => subjectFilterSelect.innerHTML += `<option value="${s}">${s}</option>`);
+        }
+
+        function filterQuizBank() {
+            const subjectFilter = document.getElementById('bank-subject-filter').value, levelFilter = document.getElementById('bank-level-filter').value, tagFilter = document.getElementById('bank-tag-filter').value, searchText = document.getElementById('bank-search').value.toLowerCase();
+            let filtered = [...originalQuizBank];
+            if(subjectFilter !== 'all') filtered = filtered.filter(q => q.subject === subjectFilter);
+            if(levelFilter !== 'all') filtered = filtered.filter(q => q.level === levelFilter);
+            if(tagFilter !== 'all') filtered = filtered.filter(q => q.tags && q.tags.split(',').map(t => t.trim()).includes(tagFilter));
+            if(searchText) filtered = filtered.filter(q => q.question.toLowerCase().includes(searchText) || q.optionA.toLowerCase().includes(searchText) || q.optionB.toLowerCase().includes(searchText) || q.optionC.toLowerCase().includes(searchText) || q.optionD.toLowerCase().includes(searchText));
+            quizBank = filtered; renderQuizTable();
+        }
+
+        function updateTagFilter() {
+            const tagFilter = document.getElementById('tag-filter'), allTags = new Set();
+            originalQuizBank.forEach(q => { if(q.tags) q.tags.split(',').forEach(t => allTags.add(t.trim())); });
+            tagFilter.innerHTML = '<option value="all" selected>All Tags</option>';
+            Array.from(allTags).sort().forEach(t => tagFilter.innerHTML += `<option value="${t}">${t}</option>`);
+        }
+
+        function renderQuizTable() {
+            const container = document.getElementById('quiz-bank-container'); container.innerHTML = '';
+            quizBank.forEach((q, i) => {
+                const originalIndex = originalQuizBank.indexOf(q), card = document.createElement('div'), difficultyClass = q.level ? q.level.toLowerCase() : 'easy';
+                card.className = 'question-card';
+                card.innerHTML = `<div class="question-card-header">${q.question}</div><div class="question-card-options"><div class="question-card-option"><strong>A:</strong> ${q.optionA}</div><div class="question-card-option"><strong>B:</strong> ${q.optionB}</div><div class="question-card-option"><strong>C:</strong> ${q.optionC}</div><div class="question-card-option"><strong>D:</strong> ${q.optionD}</div></div><div class="question-card-meta"><span class="meta-badge correct">Correct: ${q.correct}</span><span class="meta-badge subject">Subject: ${q.subject}</span><span class="meta-badge difficulty ${difficultyClass}">Difficulty: ${q.level}</span>${q.tags ? `<span class="meta-badge tags">Tags: ${q.tags}</span>` : ''}</div><div class="question-card-actions"><button class="btn btn-primary" onclick="editQuestion(${originalIndex})" style="padding: 8px 16px; font-size: 0.9em;">✏️ Edit</button><button class="btn btn-danger" onclick="deleteQuestion(${originalIndex})" style="padding: 8px 16px; font-size: 0.9em;">🗑️ Delete</button></div>`;
+                container.appendChild(card);
+            });
+        }
+
+        function showAddQuestionModal() { editingIndex = -1; document.getElementById('modal-title').textContent = 'Add New Question'; document.getElementById('question-form').reset(); document.getElementById('question-modal').classList.add('active'); }
+
+        function editQuestion(index) {
+            editingIndex = index; const q = originalQuizBank[index];
+            document.getElementById('modal-title').textContent = 'Edit Question';
+            document.getElementById('modal-question').value = q.question;
+            document.getElementById('modal-optionA').value = q.optionA;
+            document.getElementById('modal-optionB').value = q.optionB;
+            document.getElementById('modal-optionC').value = q.optionC;
+            document.getElementById('modal-optionD').value = q.optionD;
+            document.getElementById('modal-correct').value = q.correct;
+            document.getElementById('modal-subject').value = q.subject;
+            document.getElementById('modal-level').value = q.level;
+            document.getElementById('modal-tags').value = q.tags;
+            document.getElementById('question-modal').classList.add('active');
+        }
+
+        function deleteQuestion(index) { if(confirm('Are you sure? 🗑️')) { originalQuizBank.splice(index, 1); filterQuizBank(); updateTagFilter(); updateBankFilters(); markAsUnsaved(); } }
+        function closeModal() { document.getElementById('question-modal').classList.remove('active'); }
+
+        document.getElementById('question-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const qData = {question: document.getElementById('modal-question').value, optionA: document.getElementById('modal-optionA').value, optionB: document.getElementById('modal-optionB').value, optionC: document.getElementById('modal-optionC').value, optionD: document.getElementById('modal-optionD').value, correct: document.getElementById('modal-correct').value, subject: document.getElementById('modal-subject').value, level: document.getElementById('modal-level').value, tags: document.getElementById('modal-tags').value};
+            if(editingIndex === -1) originalQuizBank.push(qData); else originalQuizBank[editingIndex] = qData;
+            filterQuizBank(); updateTagFilter(); updateBankFilters(); closeModal(); markAsUnsaved();
+        });
+
+        function markAsUnsaved() { hasUnsavedChanges = true; document.getElementById('unsaved-indicator').style.display = 'inline-block'; }
+        function markAsSaved() { hasUnsavedChanges = false; document.getElementById('unsaved-indicator').style.display = 'none'; }
+
+        function downloadQuizBank() {
+            const ws = XLSX.utils.json_to_sheet(originalQuizBank.map(q => ({'Question': q.question, 'Option A': q.optionA, 'Option B': q.optionB, 'Option C': q.optionC, 'Option D': q.optionD, 'Correct Answer': q.correct, 'Subject': q.subject, 'Level': q.level, 'Tags': q.tags}))), wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Quiz Bank"); XLSX.writeFile(wb, "quiz_bank.xlsx"); markAsSaved(); alert('Quiz bank downloaded! 💾');
+        }
+
+        document.getElementById('num-questions').addEventListener('change', updateTimerDefault);
+        function updateTimerDefault() { document.getElementById('timer-minutes').value = document.getElementById('num-questions').value * 1; }
+
+        function startQuiz() {
+            if(timerInterval) clearInterval(timerInterval);
+            const numQuestions = parseInt(document.getElementById('num-questions').value), selectedSubjects = Array.from(document.getElementById('subject-filter').selectedOptions).map(o => o.value), selectedLevel = document.getElementById('level-filter').value, selectedTags = Array.from(document.getElementById('tag-filter').selectedOptions).map(o => o.value), timerMinutes = parseInt(document.getElementById('timer-minutes').value);
+            quizMode = document.getElementById('quiz-mode').value;
+            let filteredQuestions = [...originalQuizBank];
+            if(!selectedSubjects.includes('all')) filteredQuestions = filteredQuestions.filter(q => selectedSubjects.includes(q.subject));
+            if(selectedLevel !== 'all') filteredQuestions = filteredQuestions.filter(q => q.level === selectedLevel);
+            if(!selectedTags.includes('all')) filteredQuestions = filteredQuestions.filter(q => q.tags && selectedTags.some(tag => q.tags.split(',').map(t => t.trim()).includes(tag)));
+            if(filteredQuestions.length === 0) { alert('No questions match your criteria! 🔍'); return; }
+            filteredQuestions.sort(() => Math.random() - 0.5); currentQuiz = filteredQuestions.slice(0, Math.min(numQuestions, filteredQuestions.length)); userAnswers = {}; currentQuestionIndex = 0;
+            document.getElementById('quiz-container').style.display = 'block'; document.querySelectorAll('.setting-card').forEach(c => c.style.display = 'none'); document.querySelector('.start-quiz-btn').style.display = 'none'; document.querySelector('#quiz-tab h2').style.display = 'none';
+            renderQuizQuestions(); startTimer(timerMinutes);
+        }
+
+        function renderQuizQuestions() {
+            const container = document.getElementById('quiz-questions'); container.innerHTML = '';
+            if(quizMode === 'one') {
+                const q = currentQuiz[currentQuestionIndex], qDiv = createQuestionElement(q, currentQuestionIndex);
+                container.appendChild(qDiv);
+                const navDiv = document.createElement('div');
+                navDiv.style.cssText = 'display: flex; justify-content: space-between; margin-top: 20px; padding: 20px;';
+                if(currentQuestionIndex > 0) { const prevBtn = document.createElement('button'); prevBtn.className = 'btn btn-primary'; prevBtn.textContent = '⬅️ Previous'; prevBtn.onclick = () => navigateQuestion(-1); navDiv.appendChild(prevBtn); } else navDiv.appendChild(document.createElement('div'));
+                const progressDiv = document.createElement('div'); progressDiv.style.cssText = 'font-size: 1.1em; font-weight: 700; color: #233c86; align-self: center;'; progressDiv.textContent = `Question ${currentQuestionIndex + 1} of ${currentQuiz.length}`; navDiv.appendChild(progressDiv);
+                if(currentQuestionIndex < currentQuiz.length - 1) { const nextBtn = document.createElement('button'); nextBtn.className = 'btn btn-primary'; nextBtn.textContent = 'Next ➡️'; nextBtn.onclick = () => navigateQuestion(1); navDiv.appendChild(nextBtn); } else navDiv.appendChild(document.createElement('div'));
+                container.appendChild(navDiv);
+            } else {
+                currentQuiz.forEach((q, i) => { const qDiv = createQuestionElement(q, i); container.appendChild(qDiv); });
+            }
+        }
+
+        function createQuestionElement(q, index) {
+            const shuffledOptions = q.shuffledOptions || [{label: 'A', text: q.optionA}, {label: 'B', text: q.optionB}, {label: 'C', text: q.optionC}, {label: 'D', text: q.optionD}].sort(() => Math.random() - 0.5);
+            q.shuffledOptions = shuffledOptions;
+            const qDiv = document.createElement('div'), colors = ['#233c86', '#27ae60', '#f39c12', '#e74c3c'];
+            qDiv.className = 'quiz-question'; qDiv.id = `question-${index}`;
+            let optionsHTML = '';
+            shuffledOptions.forEach((opt, idx) => {
+                const displayLabel = String.fromCharCode(65 + idx), isChecked = userAnswers[index] && userAnswers[index].display === displayLabel ? 'checked' : '';
+                optionsHTML += `<div class="option-wrapper"><input type="radio" name="q${index}" value="${displayLabel}" id="q${index}${displayLabel.toLowerCase()}" ${isChecked} onchange="saveAnswer(${index}, '${displayLabel}', '${opt.label}')"><label class="option-label" for="q${index}${displayLabel.toLowerCase()}"><span style="font-weight: bold; color: ${colors[idx]};">${displayLabel})</span> ${opt.text}</label></div>`;
+            });
+            qDiv.innerHTML = `<div class="question-number">Question ${index + 1}</div><h3>${q.question}</h3><div class="options">${optionsHTML}</div>`;
+            return qDiv;
+        }
+
+        function navigateQuestion(direction) { currentQuestionIndex += direction; currentQuestionIndex = Math.max(0, Math.min(currentQuestionIndex, currentQuiz.length - 1)); renderQuizQuestions(); document.getElementById('quiz-questions').scrollIntoView({behavior: 'smooth', block: 'start'}); }
+
+        function saveAnswer(questionIndex, displayLabel, originalLabel) {
+            userAnswers[questionIndex] = {display: displayLabel, original: originalLabel};
+            if(quizMode === 'all') {
+                const nextQuestionIndex = questionIndex + 1;
+                if(nextQuestionIndex < currentQuiz.length) setTimeout(() => { const nextQuestion = document.getElementById(`question-${nextQuestionIndex}`); if(nextQuestion) nextQuestion.scrollIntoView({behavior: 'smooth', block: 'center'}); }, 300);
+            } else if(quizMode === 'one') {
+                // Auto-advance to next question in one-at-a-time mode
+                if(currentQuestionIndex < currentQuiz.length - 1) {
+                    setTimeout(() => {
+                        currentQuestionIndex++;
+                        renderQuizQuestions();
+                        document.getElementById('quiz-questions').scrollIntoView({behavior: 'smooth', block: 'start'});
+                    }, 500);
+                }
+            }
+        }
+
+        function startTimer(minutes) {
+            let timeLeft = minutes * 60; const timerElement = document.getElementById('timer');
+            timerInterval = setInterval(() => {
+                const mins = Math.floor(timeLeft / 60), secs = timeLeft % 60;
+                timerElement.textContent = `⏱️ Time: ${mins}:${secs.toString().padStart(2, '0')}`;
+                timerElement.classList.remove('warning', 'danger');
+                if(timeLeft <= 60) timerElement.classList.add('danger'); else if(timeLeft <= 180) timerElement.classList.add('warning');
+                timeLeft--;
+                if(timeLeft < 0) { clearInterval(timerInterval); submitQuiz(); }
+            }, 1000);
+        }
+
+        function submitQuiz() {
+            clearInterval(timerInterval);
+            let correctCount = 0;
+            const results = currentQuiz.map((q, i) => {
+                const userAnswer = userAnswers[i], isCorrect = userAnswer && userAnswer.original === q.correct;
+                if(isCorrect) correctCount++;
+                const userAnswerText = userAnswer ? q.shuffledOptions.find(opt => opt.label === userAnswer.original).text : 'Not answered', correctAnswerText = q[`option${q.correct}`];
+                return {question: q.question, userAnswer: userAnswer ? userAnswer.display : 'Not answered', userAnswerText, correctAnswer: q.correct, correctAnswerText, isCorrect};
+            });
+            displayResults(results, correctCount);
+        }
+
+        function getPerformanceData(percentage) {
+            if(percentage >= 90) return {emoji: '🏆', message: 'Outstanding! You\'re a Quiz Champion!', subMessage: 'Absolutely brilliant performance!'};
+            else if(percentage >= 80) return {emoji: '🌟', message: 'Excellent Work! You\'re a Star!', subMessage: 'Keep up the fantastic work!'};
+            else if(percentage >= 70) return {emoji: '👍', message: 'Great Job! Well Done!', subMessage: 'You\'re doing really well!'};
+            else if(percentage >= 60) return {emoji: '👏', message: 'Good Effort! Nice Try!', subMessage: 'You\'re on the right track!'};
+            else if(percentage >= 50) return {emoji: '💪', message: 'Not Bad! Keep Practicing!', subMessage: 'A little more effort!'};
+            else if(percentage >= 30) return {emoji: '📚', message: 'Keep Learning!', subMessage: 'Practice makes perfect!'};
+            else return {emoji: '🎯', message: 'Nice Try!', subMessage: 'Every expert was once a beginner!'};
+        }
+
+        function displayResults(results, correctCount) {
+            const totalQuestions = results.length, percentage = Math.round((correctCount / totalQuestions) * 100), performanceData = getPerformanceData(percentage);
+            let resultsHTML = `<div class="results-section"><div class="performance-emoji">${performanceData.emoji}</div><h2 class="performance-message">${performanceData.message}</h2><p style="font-size: 1.2em; margin-bottom: 10px;">${performanceData.subMessage}</p><div class="quiz-stats"><div class="stat-card"><div class="stat-value">${correctCount}</div><div class="stat-label">✅ Correct</div></div><div class="stat-card"><div class="stat-value">${totalQuestions - correctCount}</div><div class="stat-label">❌ Incorrect</div></div><div class="stat-card"><div class="stat-value">${totalQuestions}</div><div class="stat-label">📝 Total</div></div><div class="stat-card"><div class="stat-value">${percentage}%</div><div class="stat-label">🎯 Score</div></div></div></div><h3 style="margin: 30px 0; color: #233c86;">📋 Detailed Results</h3>`;
+            results.forEach((r, i) => {
+                const userAnswerText = r.userAnswer === 'Not answered' ? 'Not answered' : `${r.userAnswer}) ${r.userAnswerText}`;
+                resultsHTML += `<div class="result-item ${r.isCorrect ? 'correct' : 'incorrect'}"><h4 style="color: #233c86; margin-bottom: 10px; font-weight: 600;">Question ${i + 1}: ${r.question}</h4><p style="margin: 8px 0; font-size: 1em;">Your answer: <span class="${r.isCorrect ? 'correct-answer' : 'incorrect-answer'}">${userAnswerText}</span></p><p style="margin: 8px 0; font-size: 1em;">Correct answer: <span class="correct-answer">${r.correctAnswer}) ${r.correctAnswerText}</span></p>${r.isCorrect ? '<p style="color: #27ae60; font-weight: 600; font-size: 1em; margin-top: 8px;">✅ Correct</p>' : '<p style="color: #e74c3c; font-weight: 600; font-size: 1em; margin-top: 8px;">❌ Incorrect</p>'}</div>`;
+            });
+            resultsHTML += `<div style="text-align: center; margin-top: 30px;"><button class="btn btn-primary" onclick="resetQuiz()" style="font-size: 1.1em; padding: 14px 28px;">🔄 Take Another Quiz</button></div>`;
+            document.getElementById('results-container').innerHTML = resultsHTML;
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            document.getElementById('results-tab').classList.add('active');
+            document.querySelectorAll('.tab-button')[2].classList.add('active');
+            setTimeout(() => window.scrollTo({top: 0, behavior: 'smooth'}), 100);
+        }
+
+        function resetQuiz() {
+            currentQuiz = []; userAnswers = {}; currentQuestionIndex = 0;
+            if(timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+            document.getElementById('quiz-container').style.display = 'none';
+            document.querySelectorAll('.setting-card').forEach(c => c.style.display = 'block');
+            document.querySelector('.start-quiz-btn').style.display = 'block';
+            document.querySelector('#quiz-tab h2').style.display = 'block';
+            document.getElementById('timer').classList.remove('warning', 'danger');
+            document.getElementById('quiz-questions').innerHTML = '';
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            document.getElementById('quiz-tab').classList.add('active');
+            document.querySelectorAll('.tab-button')[1].classList.add('active');
+            setTimeout(() => window.scrollTo({top: 0, behavior: 'smooth'}), 100);
+        }
+
+        window.addEventListener('beforeunload', (e) => { if(hasUnsavedChanges || currentQuiz.length > 0) { e.preventDefault(); e.returnValue = ''; } });
+    </script>
+</body>
+</html>
