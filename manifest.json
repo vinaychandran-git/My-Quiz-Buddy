@@ -1,6 +1,6 @@
 {
-  "name": "Kids Quiz App",
-  "short_name": "QuizApp",
+  "name": "My Quiz Buddy",
+  "short_name": "MyQuizBuddy",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -18,4 +18,5 @@
     }
   ]
 }
+
 
