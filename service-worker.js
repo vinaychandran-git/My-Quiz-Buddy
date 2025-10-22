@@ -1,6 +1,6 @@
 const CACHE_NAME = 'quiz-app-cache-v1';
 const urlsToCache = [
-  './quiz.html',
+  './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
@@ -19,3 +19,4 @@ self.addEventListener('fetch', event => {
     caches.match(event.request).then(response => response || fetch(event.request))
   );
 });
+
